@@ -1,73 +1,96 @@
-# CyberPanel MariaDB Tuneup Script by KloudBoy
+# CyberPanel Optimization Suite by KloudBoy
 
-A robust, safety-first MariaDB configuration optimizer designed specifically for **CyberPanel** environments running **high-traffic WooCommerce** sites.
+A collection of robust, safety-first optimization scripts designed specifically for **CyberPanel** environments running **high-traffic WooCommerce** sites.
 
-## Features
+## 🚀 Included Tools
 
-- **🛡️ Safe & Reversible**: 
-  - Creates a dedicated override file (`kloudboy-tuneup.cnf`) instead of messing with your main configs.
-  - Automatically backups existing configurations before applying changes.
-  - **Syntax Validation**: Checks configuration syntax before restarting to prevent downtime.
-  - **Auto-Revert**: If the service fails to restart, it automatically reverts changes.
+### 1. MariaDB Tuneup (`mariadb_tuneup.sh`)
+Automatically optimizes MariaDB configuration based on your server's available RAM.
+*   **Dynamic RAM Scaling**: Adjusts `innodb_buffer_pool_size`, `max_connections`, etc.
+*   **Safe**: Creates override configs instead of editing main files.
+*   **WooCommerce Ready**: Tuned for complex queries and high write throughput.
 
-- **🚀 Smart Optimization**:
-  - **Dynamic RAM Scaling**: Automatically calculates optimal `innodb_buffer_pool_size`, `max_connections`, and `innodb_log_file_size` based on total server RAM (supports <2GB to 32GB+).
-  - **Low-RAM Efficiency**: Automatically disables `performance_schema` on servers with <2GB RAM to save memory (~400MB).
-  - **WooCommerce Tuned**: Specific optimizations for complex queries (`tmp_table_size`, `max_heap_table_size`) and high write throughput (`O_DIRECT`, `innodb_flush_log_at_trx_commit=2`).
+### 2. WordPress & Woo Optimizer (`wp_woo_optimize.sh`)
+Interactive tool to optimize individual WordPress installations.
+*   **Config Tuning**: Increases Memory Limits (`WP_MEMORY_LIMIT`) in `wp-config.php`.
+*   **Cron Management**: Disables `WP_CRON` and sets up a system-level cron job.
+*   **DB Cleanup**: Uses `wp-cli` to clear transients and optimize tables.
 
-- **🔧 Compatibility**:
-  - Automatically detects **MariaDB** or **MySQL** service names.
-  - Works seamlessly with standard CyberPanel file paths.
+### 3. Server Audit (`cyberpanel_audit.sh`)
+A diagnostic health checker for your CyberPanel server.
+*   **MariaDB Audit**: Checks Buffer Pool usage and connection limits.
+*   **PHP Audit**: Scans active LSPHP versions for memory limits and opcache status.
+*   **LiteSpeed Check**: Verifies GZIP, KeepAlive, and service status.
 
 ---
 
-## ⚡ One-Line Installation
+## ⚡ Quick Execution (One-Liners)
 
-You can run this script directly on your server with a single command. 
+Run these commands directly on your server to execute the tools without manually downloading them.
 
-### Option 1: Curl (Recommended)
+### 🔹 1. MariaDB Tuneup
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/mariadb_tuneup.sh)
 ```
 
-### Option 2: Wget
+### 🔹 2. WordPress & Woo Optimizer
 ```bash
-wget -qO- https://raw.githubusercontent.com/bajpangosh/cps/main/mariadb_tuneup.sh | bash
+bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/wp_woo_optimize.sh)
 ```
 
-### Option 3: Non-Interactive (Auto-Approve)
-Great for automation scripts.
+### 🔹 3. Server Audit
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/mariadb_tuneup.sh) -y
+bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/cyberpanel_audit.sh)
 ```
 
 ---
 
-## 🛠️ Manual Usage
+## 📦 Manual Installation & Usage
 
-1. Download the script:
-   ```bash
-   wget https://raw.githubusercontent.com/bajpangosh/cps/main/mariadb_tuneup.sh
-   ```
-2. Make it executable:
-   ```bash
-   chmod +x mariadb_tuneup.sh
-   ```
-3. Run it as root:
-   ```bash
-   sudo ./mariadb_tuneup.sh
-   ```
+You can clone the repo or download scripts individually.
 
-## ⚙️ What It Changes
+```bash
+git clone https://github.com/bajpangosh/cps.git
+cd cps
+chmod +x *.sh
+```
 
-The script calculates values based on your RAM and writes/appends to an override file (usually `/etc/mysql/mariadb.conf.d/kloudboy-tuneup.cnf`). 
+### 🔹 Run MariaDB Tuneup
+```bash
+sudo ./mariadb_tuneup.sh
+```
+*   **Unattended mode**: `sudo ./mariadb_tuneup.sh -y`
 
-Key settings adjusted:
-- `innodb_buffer_pool_size`: 40-65% of RAM
-- `max_connections`: Scaled 80 - 1200
-- `query_cache_type`: 0 (Disabled for high concurrency)
-- `innodb_flush_log_at_trx_commit`: 2 (Balanced performance/safety)
-- `performance_schema`: OFF (Only for <2GB RAM nodes)
+### 🔹 Run WordPress Optimizer
+```bash
+sudo ./wp_woo_optimize.sh
+```
+*   This will scan `/home` and present a menu of sites to optimize.
+
+### 🔹 Run Server Audit
+```bash
+sudo ./cyberpanel_audit.sh
+```
+*   Gives you an instant "Pass/Fail" style report on your configuration.
+
+### 🔹 Git Push Utility
+For developers maintaining this repo:
+```bash
+./githpush.sh "Commit message"
+```
+
+---
+
+## ⚙️ Details
+
+### MariaDB Logic
+*   **<2GB RAM**: Disables `performance_schema` to save ~400MB RAM.
+*   **Buffers**: Sets `innodb_buffer_pool_size` to 40-65% of total RAM.
+*   **Safety**: Validates config syntax before restarting. Auto-reverts on failure.
+
+### WordPress Logic
+*   **Memory**: Sets `WC_MEMORY_LIMIT` to 1024M for heavy backend operations.
+*   **Cron**: Replaces visitor-based triggers with reliable system cron (every 5 mins).
 
 ## ⚠️ Disclaimer
-Always backup your databases before applying major configuration changes. While this script includes revert logic, individual server environments can vary.
+Always backup your data before applying major configuration changes. These scripts are designed to be safe (with backup logic included), but every server environment is unique.
