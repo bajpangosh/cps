@@ -186,7 +186,15 @@ if [[ -z "$PHP_VER_NUM" ]]; then
     echo -e "${RED}Could not detect PHP version from .htaccess or defaults.${NC}"
 else
     # 2. Locate php.ini
-    PHP_INI="/usr/local/lsws/lsphp${PHP_VER_NUM}/etc/php.ini"
+    # Try to detect via PHP binary
+    DETECTED_INI=$("$FULL_PHP_BIN" --ini 2>/dev/null | grep "Loaded Configuration File" | awk -F: '{print $2}' | sed 's/^[ \t]*//')
+    
+    if [[ -n "$DETECTED_INI" && -f "$DETECTED_INI" ]]; then
+        PHP_INI="$DETECTED_INI"
+    else
+        # Fallback to standard CyberPanel path
+        PHP_INI="/usr/local/lsws/lsphp${PHP_VER_NUM}/etc/php.ini"
+    fi
     
     echo -e "Detected PHP Version: ${YELLOW}lsphp${PHP_VER_NUM}${NC}"
     echo -e "Target php.ini:       ${YELLOW}${PHP_INI}${NC}"
