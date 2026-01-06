@@ -163,8 +163,77 @@ update_config_define "DISABLE_WP_CRON" "true" "$SELECTED_CONFIG"
 
 # 3. Misc Woo Performance
 # update_config_define "WP_AUTO_UPDATE_CORE" "false" "$SELECTED_CONFIG" # Optional, maybe controversial
+update_config_define "WP_POST_REVISIONS" "10" "$SELECTED_CONFIG"
+update_config_define "AUTOSAVE_INTERVAL" "300" "$SELECTED_CONFIG"
+
 
 echo -e "${GREEN}wp-config.php updated.${NC}"
+chown "$SITE_USER":"$SITE_USER" "$SELECTED_CONFIG"
+
+# ----------------------------------------------------------------------
+# OPTIMIZE PHP.INI (Global for this PHP Version)
+# ----------------------------------------------------------------------
+echo -e ""
+echo -e "${BLUE}Check & Optimize php.ini...${NC}"
+
+# 1. Detect PHP Version
+# We reuse get_php_binary but just need the version number
+# Currently get_php_binary returns full path, e.g. /usr/local/lsws/lsphp81/bin/php
+FULL_PHP_BIN=$(get_php_binary "$SITE_ROOT")
+PHP_VER_NUM=$(echo "$FULL_PHP_BIN" | grep -oE "lsphp[0-9]+" | grep -oE "[0-9]+")
+
+if [[ -z "$PHP_VER_NUM" ]]; then
+    echo -e "${RED}Could not detect PHP version from .htaccess or defaults.${NC}"
+else
+    # 2. Locate php.ini
+    PHP_INI="/usr/local/lsws/lsphp${PHP_VER_NUM}/etc/php.ini"
+    
+    echo -e "Detected PHP Version: ${YELLOW}lsphp${PHP_VER_NUM}${NC}"
+    echo -e "Target php.ini:       ${YELLOW}${PHP_INI}${NC}"
+    
+    if [[ -f "$PHP_INI" ]]; then
+        # 3. Backup
+        cp "$PHP_INI" "${PHP_INI}.backup.$(date +%F_%T)"
+        echo -e "${GREEN}Backup created: ${PHP_INI}.backup.$(date +%F_%T)${NC}"
+        
+        # 4. Update Function
+        update_php_ini() {
+            local key="$1"
+            local val="$2"
+            local file="$3"
+            
+            # Check if key exists (active or commented)
+            if grep -qE "^[;]?\s*${key}\s*=" "$file"; then
+                # Replace existing
+                # Pattern: start of line, optional semicolon/space, key, optional space, =, rest
+                sed -i "s|^[;]*\s*${key}\s*=.*|${key} = ${val}|" "$file"
+                echo -e " - Set $key = $val"
+            else
+                # Append
+                echo -e " - Appending $key = $val"
+                echo "${key} = ${val}" >> "$file"
+            fi
+        }
+
+        # 5. Apply Values
+        update_php_ini "max_input_vars" "5000" "$PHP_INI"
+        update_php_ini "max_execution_time" "300" "$PHP_INI"
+        update_php_ini "max_input_time" "300" "$PHP_INI"
+        update_php_ini "post_max_size" "512M" "$PHP_INI"
+        update_php_ini "upload_max_filesize" "512M" "$PHP_INI"
+        update_php_ini "memory_limit" "1024M" "$PHP_INI"
+        
+        echo -e "${GREEN}php.ini updated.${NC}"
+        
+        # 6. Restart Notification / Action
+        echo -e "${YELLOW}Restarting LimitSpeed PHP (killall lsphp) to apply changes...${NC}"
+        killall lsphp 2>/dev/null
+        # Also restart lsws gracefully if needed, but killall lsphp is usually enough for PHP proc.
+        
+    else
+        echo -e "${RED}php.ini not found at $PHP_INI. Skipping global PHP optimization.${NC}"
+    fi
+fi
 
 # ----------------------------------------------------------------------
 # SETUP SERVER-SIDE CRON
@@ -175,7 +244,7 @@ echo -e "${BLUE}Setting up Server-Side Cron...${NC}"
 PHP_BIN=$(get_php_binary "$SITE_ROOT")
 echo -e "Detected PHP Binary: ${YELLOW}$PHP_BIN${NC}"
 
-CRON_CMD="$PHP_BIN $SITE_ROOT/wp-cron.php >/dev/null 2>&1"
+CRON_CMD="cd $SITE_ROOT && $PHP_BIN wp-cron.php >/dev/null 2>&1"
 CRON_JOB="*/5 * * * * $CRON_CMD"
 
 # Check if cron already exists for this user
