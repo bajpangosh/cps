@@ -61,12 +61,17 @@ get_php_binary() {
 
     # Fallback/Default detection
     if [[ -z "$php_ver" ]]; then
-        # Try to guess or default to a common version like 8.1 (lsphp81)
-        php_ver="81"
-        if [[ -f "/usr/local/lsws/lsphp74/bin/php" ]]; then php_ver="74"; fi
-        if [[ -f "/usr/local/lsws/lsphp80/bin/php" ]]; then php_ver="80"; fi
-        if [[ -f "/usr/local/lsws/lsphp81/bin/php" ]]; then php_ver="81"; fi
-        if [[ -f "/usr/local/lsws/lsphp82/bin/php" ]]; then php_ver="82"; fi
+        # Try to guess - check for available versions (Latest preferred)
+        # List based on CyberPanel standard versions
+        for v in "83" "82" "81" "80" "74" "73" "72" "71" "70" "56" "55" "54" "53"; do
+            if [[ -f "/usr/local/lsws/lsphp${v}/bin/php" ]]; then
+                php_ver="$v"
+                break
+            fi
+        done
+        
+        # Absolute fallback
+        if [[ -z "$php_ver" ]]; then php_ver="81"; fi
     fi
 
     echo "/usr/local/lsws/lsphp${php_ver}/bin/php"
@@ -186,14 +191,23 @@ if [[ -z "$PHP_VER_NUM" ]]; then
     echo -e "${RED}Could not detect PHP version from .htaccess or defaults.${NC}"
 else
     # 2. Locate php.ini
-    # Try to detect via PHP binary
+    # Try 1: Ask PHP binary
     DETECTED_INI=$("$FULL_PHP_BIN" --ini 2>/dev/null | grep "Loaded Configuration File" | awk -F: '{print $2}' | sed 's/^[ \t]*//')
     
     if [[ -n "$DETECTED_INI" && -f "$DETECTED_INI" ]]; then
         PHP_INI="$DETECTED_INI"
     else
-        # Fallback to standard CyberPanel path
+        # Try 2: Standard CyberPanel Path
         PHP_INI="/usr/local/lsws/lsphp${PHP_VER_NUM}/etc/php.ini"
+        
+        # Try 3: Search recursively if standard path fails
+        if [[ ! -f "$PHP_INI" ]]; then
+             echo -e "${YELLOW}Standard php.ini path not found. Searching...${NC}"
+             FOUND_INI=$(find "/usr/local/lsws/lsphp${PHP_VER_NUM}" -name "php.ini" 2>/dev/null | head -n 1)
+             if [[ -n "$FOUND_INI" ]]; then
+                 PHP_INI="$FOUND_INI"
+             fi
+        fi
     fi
     
     echo -e "Detected PHP Version: ${YELLOW}lsphp${PHP_VER_NUM}${NC}"
