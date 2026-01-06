@@ -191,8 +191,18 @@ if [[ -z "$PHP_VER_NUM" ]]; then
     echo -e "${RED}Could not detect PHP version from .htaccess or defaults.${NC}"
 else
     # 2. Locate php.ini
-    # Try 1: Ask PHP binary
-    DETECTED_INI=$("$FULL_PHP_BIN" --ini 2>/dev/null | grep "Loaded Configuration File" | awk -F: '{print $2}' | sed 's/^[ \t]*//')
+    DETECTED_INI=""
+
+    # Try 1: WP-CLI Info (User Preferred)
+    if command -v wp &> /dev/null; then
+         # Run wp --info using the specific PHP binary to confirm which INI it loads
+         DETECTED_INI=$("$FULL_PHP_BIN" "$(command -v wp)" --info --allow-root 2>/dev/null | grep "php.ini used" | awk -F: '{print $2}' | sed 's/^[ \t]*//')
+    fi
+
+    # Try 2: Native PHP Info (Fallback)
+    if [[ -z "$DETECTED_INI" ]]; then
+         DETECTED_INI=$("$FULL_PHP_BIN" --ini 2>/dev/null | grep "Loaded Configuration File" | awk -F: '{print $2}' | sed 's/^[ \t]*//')
+    fi
     
     if [[ -n "$DETECTED_INI" && -f "$DETECTED_INI" ]]; then
         PHP_INI="$DETECTED_INI"
