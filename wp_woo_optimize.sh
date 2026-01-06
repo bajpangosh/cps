@@ -63,7 +63,7 @@ get_php_binary() {
     if [[ -z "$php_ver" ]]; then
         # Try to guess - check for available versions (Latest preferred)
         # List based on CyberPanel standard versions
-        for v in "83" "82" "81" "80" "74" "73" "72" "71" "70" "56" "55" "54" "53"; do
+        for v in "85" "84" "83" "82" "81" "80" "74" "73" "72" "71" "70" "56" "55" "54" "53"; do
             if [[ -f "/usr/local/lsws/lsphp${v}/bin/php" ]]; then
                 php_ver="$v"
                 break
