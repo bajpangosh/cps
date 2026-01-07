@@ -123,6 +123,50 @@ echo -e "${BLUE}Selected: ${SITE_ROOT}${NC}"
 echo -e "${BLUE}Owner:    ${SITE_USER}${NC}"
 
 # ----------------------------------------------------------------------
+# SELECT PHP VERSION
+# ----------------------------------------------------------------------
+echo -e ""
+echo -e "${BLUE}PHP Version Selection:${NC}"
+DETECTED_BIN=$(get_php_binary "$SITE_ROOT")
+DETECTED_VER=$(echo "$DETECTED_BIN" | grep -oE "lsphp[0-9]+" | grep -oE "[0-9]+")
+
+echo -e "Detected Version: ${GREEN}PHP $DETECTED_VER${NC} ($DETECTED_BIN)"
+read -p "Do you want to use the detected PHP version? (y/n) [y]: " USE_DETECTED
+USE_DETECTED=${USE_DETECTED:-y}
+
+if [[ "$USE_DETECTED" =~ ^[Yy]$ ]]; then
+    SELECTED_PHP_BIN="$DETECTED_BIN"
+    SELECTED_PHP_VER="$DETECTED_VER"
+else
+    echo -e ""
+    echo "Available PHP Versions:"
+    AVAILABLE_VERSIONS=()
+    idx=1
+    # Check common CyberPanel PHP versions
+    for v in "86" "85" "84" "83" "82" "81" "80" "74" "73" "72" "71" "70" "56"; do
+        if [[ -f "/usr/local/lsws/lsphp${v}/bin/php" ]]; then
+            echo " [$idx] PHP $v"
+            AVAILABLE_VERSIONS+=("$v")
+            ((idx++))
+        fi
+    done
+    
+    echo ""
+    read -p "Select PHP Version (1-${#AVAILABLE_VERSIONS[@]}): " PHP_SEL
+    
+    if ! [[ "$PHP_SEL" =~ ^[0-9]+$ ]] || [ "$PHP_SEL" -lt 1 ] || [ "$PHP_SEL" -gt "${#AVAILABLE_VERSIONS[@]}" ]; then
+        echo -e "${RED}Invalid selection. Using detected version.${NC}"
+        SELECTED_PHP_BIN="$DETECTED_BIN"
+        SELECTED_PHP_VER="$DETECTED_VER"
+    else
+        SELECTED_VER="${AVAILABLE_VERSIONS[$((PHP_SEL-1))]}"
+        SELECTED_PHP_BIN="/usr/local/lsws/lsphp${SELECTED_VER}/bin/php"
+        SELECTED_PHP_VER="$SELECTED_VER"
+        echo -e "${GREEN}Selected: PHP $SELECTED_PHP_VER${NC}"
+    fi
+fi
+
+# ----------------------------------------------------------------------
 # OPTIMIZE WP-CONFIG.PHP
 # ----------------------------------------------------------------------
 echo -e ""
@@ -181,11 +225,9 @@ chown "$SITE_USER":"$SITE_USER" "$SELECTED_CONFIG"
 echo -e ""
 echo -e "${BLUE}Check & Optimize php.ini...${NC}"
 
-# 1. Detect PHP Version
-# We reuse get_php_binary but just need the version number
-# Currently get_php_binary returns full path, e.g. /usr/local/lsws/lsphp81/bin/php
-FULL_PHP_BIN=$(get_php_binary "$SITE_ROOT")
-PHP_VER_NUM=$(echo "$FULL_PHP_BIN" | grep -oE "lsphp[0-9]+" | grep -oE "[0-9]+")
+# 1. Use Selected PHP Version
+FULL_PHP_BIN="$SELECTED_PHP_BIN"
+PHP_VER_NUM="$SELECTED_PHP_VER"
 
 if [[ -z "$PHP_VER_NUM" ]]; then
     echo -e "${RED}Could not detect PHP version from .htaccess or defaults.${NC}"
@@ -273,7 +315,7 @@ fi
 echo -e ""
 echo -e "${BLUE}Setting up Server-Side Cron...${NC}"
 
-PHP_BIN=$(get_php_binary "$SITE_ROOT")
+PHP_BIN="$SELECTED_PHP_BIN"
 echo -e "Detected PHP Binary: ${YELLOW}$PHP_BIN${NC}"
 
 CRON_CMD="cd $SITE_ROOT && $PHP_BIN wp-cron.php >/dev/null 2>&1"
