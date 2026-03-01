@@ -2,6 +2,7 @@
 
 # CyberPanel Optimization Suite Launcher
 # All-in-one menu to run toolkit scripts from one entry point.
+# Developed by KloudBoy | https://kloudboy.com
 # Version 1.0
 
 RED='\033[0;31m'
@@ -27,6 +28,7 @@ print_banner() {
     echo -e "${NC}"
     echo -e "${BLUE}CyberPanel Optimization Suite (Main Launcher)${NC}"
     echo -e "${YELLOW}Run all toolkit scripts from one menu${NC}"
+    echo -e "${YELLOW}Developed by KloudBoy | https://kloudboy.com${NC}"
     echo ""
 }
 

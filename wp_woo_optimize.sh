@@ -2,6 +2,7 @@
 
 # CyberPanel WP & Woo Optimizer Script
 # Developed by KloudBoy
+# Website: https://kloudboy.com
 # Version 1.0
 
 # ----------------------------------------------------------------------
@@ -30,6 +31,7 @@ print_banner() {
     echo -e "${NC}"
     echo -e "${BLUE}   WordPress & WooCommerce Optimizer for CyberPanel${NC}"
     echo -e "${YELLOW}   Automated Tuning & Cron Management${NC}"
+    echo -e "${YELLOW}   Developed by KloudBoy | https://kloudboy.com${NC}"
     echo -e "   --------------------------------------------------"
     echo ""
 }

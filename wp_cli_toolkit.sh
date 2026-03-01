@@ -2,6 +2,7 @@
 
 # CyberPanel WP-CLI Toolkit
 # Interactive utility for common WordPress maintenance tasks.
+# Developed by KloudBoy | https://kloudboy.com
 # Version 1.0
 
 RED='\033[0;31m'
@@ -29,6 +30,7 @@ print_banner() {
     echo -e "${NC}"
     echo -e "${BLUE}   WP-CLI Toolkit for CyberPanel${NC}"
     echo -e "${YELLOW}   Website-first selection with useful daily maintenance commands${NC}"
+    echo -e "${YELLOW}   Developed by KloudBoy | https://kloudboy.com${NC}"
     echo ""
 }
 

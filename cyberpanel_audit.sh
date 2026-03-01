@@ -3,6 +3,7 @@
 # CyberPanel Configuration Audit & Optimizer Checker
 # Checks MariaDB, PHP, and LiteSpeed settings against best practices.
 # Developed by KloudBoy
+# Website: https://kloudboy.com
 # Version 1.0
 
 # ----------------------------------------------------------------------
@@ -31,6 +32,7 @@ print_banner() {
     echo -e "${NC}"
     echo -e "${BLUE}   CyberPanel Performance Audit Tool${NC}"
     echo -e "${YELLOW}   Checks MariaDB, PHP (LSPHP), and LiteSpeed Settings${NC}"
+    echo -e "${YELLOW}   Developed by KloudBoy | https://kloudboy.com${NC}"
     echo -e "   --------------------------------------------------"
     echo ""
 }

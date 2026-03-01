@@ -2,6 +2,7 @@
 
 # CyberPanel Backup Manager
 # Wrapper around CyberPanel's native backup/restore CLI with safety helpers.
+# Developed by KloudBoy | https://kloudboy.com
 # Version 1.0
 
 RED='\033[0;31m'
@@ -27,6 +28,7 @@ print_banner() {
     echo -e "${NC}"
     echo -e "${BLUE}   CyberPanel Backup Manager${NC}"
     echo -e "${YELLOW}   Native backup/restore wrapper + retention + verification${NC}"
+    echo -e "${YELLOW}   Developed by KloudBoy | https://kloudboy.com${NC}"
     echo ""
 }
 

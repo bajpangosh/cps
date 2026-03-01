@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Git Push Utility for CPS
+# Developed by KloudBoy | https://kloudboy.com
+
 commitMessage="${1:-}"
 if [[ -z "$commitMessage" ]]; then
     read -r -p "Enter commit message: " commitMessage

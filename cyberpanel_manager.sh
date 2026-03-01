@@ -2,6 +2,7 @@
 
 # CyberPanel Service & Maintenance Manager
 # Developed for operational management of CyberPanel stacks.
+# Developed by KloudBoy | https://kloudboy.com
 # Version 1.0
 
 RED='\033[0;31m'
@@ -26,6 +27,7 @@ print_banner() {
     echo -e "${NC}"
     echo -e "${BLUE}   CyberPanel Manager${NC}"
     echo -e "${YELLOW}   Service control, health snapshot, and official maintenance actions${NC}"
+    echo -e "${YELLOW}   Developed by KloudBoy | https://kloudboy.com${NC}"
     echo ""
 }
 
