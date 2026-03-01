@@ -22,6 +22,30 @@ A diagnostic health checker for your CyberPanel server.
 *   **PHP Audit**: Scans active LSPHP versions for memory limits and opcache status.
 *   **LiteSpeed Check**: Verifies GZIP, KeepAlive, and service status.
 
+### 4. CyberPanel Manager (`cyberpanel_manager.sh`)
+Interactive control center for daily CyberPanel operations.
+*   **Service Control**: Health snapshot, core restarts, and single-service actions.
+*   **Official Maintenance Hooks**: Runs CyberPanel official `preUpgrade.sh` and `watchdog.sh`.
+*   **Bandwidth Reset**: Executes `/usr/local/CyberCP/scripts/reset_bandwidth.sh` when available.
+
+### 5. CyberPanel Backup Manager (`cyberpanel_backup_manager.sh`)
+Backup and restore control plane built on CyberPanel native CLI commands.
+*   **Native Backup/Restore**: Uses `cyberpanel createBackup` and `cyberpanel restoreBackup`.
+*   **Backup Pool Management**: Works with `/home/<domain>/backup` and `/home/backup`.
+*   **Operations**: Retention cleanup, archive verification, and backup scheduling.
+
+### 6. WP-CLI Toolkit (`wp_cli_toolkit.sh`)
+Interactive WP-CLI command center with website-first workflow.
+*   **Website First**: Selects the target WordPress installation before any action.
+*   **Useful Command Groups**: Core, plugins, themes, database, cache, users, search/replace, and cron.
+*   **Safety Layer**: Built-in confirmations and optional DB backup before heavy operations.
+
+### 7. Main Launcher (`cps.sh`)
+All-in-one entry point for this toolkit.
+*   **Single Menu**: Launches all CPS scripts from one place.
+*   **Flexible**: Runs local scripts if present, or downloads missing tools from the repo.
+*   **Operator Friendly**: Includes unattended MariaDB option and clear menu flow.
+
 ---
 
 ## ⚡ Quick Execution (One-Liners)
@@ -41,6 +65,26 @@ bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/wp_woo_op
 ### 🔹 3. Server Audit
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/cyberpanel_audit.sh)
+```
+
+### 🔹 4. CyberPanel Manager
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/cyberpanel_manager.sh)
+```
+
+### 🔹 5. CyberPanel Backup Manager
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/cyberpanel_backup_manager.sh)
+```
+
+### 🔹 6. WP-CLI Toolkit
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/wp_cli_toolkit.sh)
+```
+
+### 🔹 7. Main Launcher (Recommended)
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/bajpangosh/cps/main/cps.sh)
 ```
 
 ---
@@ -73,11 +117,37 @@ sudo ./cyberpanel_audit.sh
 ```
 *   Gives you an instant "Pass/Fail" style report on your configuration.
 
+### 🔹 Run CyberPanel Manager
+```bash
+sudo ./cyberpanel_manager.sh
+```
+*   Includes service restart/status control, official upgrade trigger, watchdog run, and quick logs.
+
+### 🔹 Run CyberPanel Backup Manager
+```bash
+sudo ./cyberpanel_backup_manager.sh
+```
+*   Includes native backup/restore, file verification, retention pruning, and daily cron scheduling.
+
+### 🔹 Run WP-CLI Toolkit
+```bash
+sudo ./wp_cli_toolkit.sh
+```
+*   First selects a website, then opens command menus for core/plugins/themes/DB/cache/users/cron/search-replace.
+
+### 🔹 Run Main Launcher (Recommended)
+```bash
+sudo ./cps.sh
+```
+*   One menu for audit, MariaDB tuneup, WP optimizer, CyberPanel manager, backup manager, and WP-CLI toolkit.
+
 ### 🔹 Git Push Utility
 For developers maintaining this repo:
 ```bash
 ./githpush.sh "Commit message"
 ```
+*   You can also run `./githpush.sh` and enter the message interactively.
+*   Script now exits cleanly when there are no changes to commit.
 
 ---
 
@@ -91,6 +161,26 @@ For developers maintaining this repo:
 ### WordPress Logic
 *   **Memory**: Sets `WC_MEMORY_LIMIT` to 1024M for heavy backend operations.
 *   **Cron**: Replaces visitor-based triggers with reliable system cron (every 5 mins).
+
+### CyberPanel Manager Logic
+*   **Core Services**: Detects and manages `lscpd`, `lsws`, and active DB service (`mariadb`/`mysql`).
+*   **Official Scripts**: Pulls upgrade/watchdog scripts from the official CyberPanel repo.
+*   **Operational Safety**: Confirms before restarts/upgrades and avoids duplicate cron/log actions.
+
+### CyberPanel Backup Manager Logic
+*   **Native CLI Integration**: Executes backup and restore through CyberPanel official CLI.
+*   **Path Compatibility**: Handles site backups under `/home/<domain>/backup` and global pool `/home/backup`.
+*   **Backup Hygiene**: Adds verification checks and time-based cleanup to reduce stale backup buildup.
+
+### WP-CLI Toolkit Logic
+*   **Website Context**: All WP-CLI commands run against the selected `--path`.
+*   **Ownership Safety**: Executes commands as the website owner where possible.
+*   **Operational Coverage**: Covers frequent day-to-day WP admin tasks without remembering raw CLI syntax.
+
+### Main Launcher Logic
+*   **Central Control**: Exposes every toolkit script in a single operations menu.
+*   **Execution Fallback**: Uses local scripts first, then fetches from GitHub if missing.
+*   **Simple Operations**: Reduces operator mistakes by avoiding manual script-name entry.
 
 ## ⚠️ Disclaimer
 Always backup your data before applying major configuration changes. These scripts are designed to be safe (with backup logic included), but every server environment is unique.

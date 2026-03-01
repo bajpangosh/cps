@@ -77,6 +77,46 @@ get_php_binary() {
     echo "/usr/local/lsws/lsphp${php_ver}/bin/php"
 }
 
+prompt_for_number() {
+    local prompt="$1"
+    local min="$2"
+    local max="$3"
+    local input=""
+
+    while true; do
+        read -r -p "$prompt" input
+        if [[ "$input" =~ ^[0-9]+$ ]] && [ "$input" -ge "$min" ] && [ "$input" -le "$max" ]; then
+            echo "$input"
+            return 0
+        fi
+        echo -e "${YELLOW}Please enter a number between ${min} and ${max}.${NC}"
+    done
+}
+
+run_wp_cli_as_owner() {
+    if command -v sudo >/dev/null 2>&1; then
+        sudo -u "$SITE_USER" wp "$@"
+        return $?
+    fi
+
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -u "$SITE_USER" -- wp "$@"
+        return $?
+    fi
+
+    local quoted_cmd
+    printf -v quoted_cmd "%q " wp "$@"
+    su -s /bin/bash "$SITE_USER" -c "$quoted_cmd"
+}
+
+ensure_crontab_available() {
+    if ! command -v crontab >/dev/null 2>&1; then
+        echo -e "${RED}crontab command not found. Install cron package and retry.${NC}"
+        return 1
+    fi
+    return 0
+}
+
 # ----------------------------------------------------------------------
 # SCAN FOR WORDPRESS SITES
 # ----------------------------------------------------------------------
@@ -105,13 +145,7 @@ for config in "${WP_CONFIGS[@]}"; do
 done
 
 echo ""
-read -p "Select a site to optimize (1-${#WP_CONFIGS[@]}): " SITE_NUM
-
-# Validate Input
-if ! [[ "$SITE_NUM" =~ ^[0-9]+$ ]] || [ "$SITE_NUM" -lt 1 ] || [ "$SITE_NUM" -gt "${#WP_CONFIGS[@]}" ]; then
-    echo -e "${RED}Invalid selection.${NC}"
-    exit 1
-fi
+SITE_NUM=$(prompt_for_number "Select a site to optimize (1-${#WP_CONFIGS[@]}): " 1 "${#WP_CONFIGS[@]}")
 
 # Get Selected Config
 SELECTED_CONFIG="${WP_CONFIGS[$((SITE_NUM-1))]}"
@@ -131,7 +165,7 @@ DETECTED_BIN=$(get_php_binary "$SITE_ROOT")
 DETECTED_VER=$(echo "$DETECTED_BIN" | grep -oE "lsphp[0-9]+" | grep -oE "[0-9]+")
 
 echo -e "Detected Version: ${GREEN}PHP $DETECTED_VER${NC} ($DETECTED_BIN)"
-read -p "Do you want to use the detected PHP version? (y/n) [y]: " USE_DETECTED
+read -r -p "Do you want to use the detected PHP version? (y/n) [y]: " USE_DETECTED
 USE_DETECTED=${USE_DETECTED:-y}
 
 if [[ "$USE_DETECTED" =~ ^[Yy]$ ]]; then
@@ -150,19 +184,29 @@ else
             ((idx++))
         fi
     done
-    
-    echo ""
-    read -p "Select PHP Version (1-${#AVAILABLE_VERSIONS[@]}): " PHP_SEL
-    
-    if ! [[ "$PHP_SEL" =~ ^[0-9]+$ ]] || [ "$PHP_SEL" -lt 1 ] || [ "$PHP_SEL" -gt "${#AVAILABLE_VERSIONS[@]}" ]; then
-        echo -e "${RED}Invalid selection. Using detected version.${NC}"
+
+    if [ ${#AVAILABLE_VERSIONS[@]} -eq 0 ]; then
+        echo -e "${YELLOW}No selectable LSPHP versions found. Using detected version.${NC}"
         SELECTED_PHP_BIN="$DETECTED_BIN"
         SELECTED_PHP_VER="$DETECTED_VER"
     else
+        echo ""
+        PHP_SEL=$(prompt_for_number "Select PHP Version (1-${#AVAILABLE_VERSIONS[@]}): " 1 "${#AVAILABLE_VERSIONS[@]}")
         SELECTED_VER="${AVAILABLE_VERSIONS[$((PHP_SEL-1))]}"
         SELECTED_PHP_BIN="/usr/local/lsws/lsphp${SELECTED_VER}/bin/php"
         SELECTED_PHP_VER="$SELECTED_VER"
         echo -e "${GREEN}Selected: PHP $SELECTED_PHP_VER${NC}"
+    fi
+fi
+
+if [[ ! -x "$SELECTED_PHP_BIN" ]]; then
+    echo -e "${YELLOW}Selected PHP binary not found at ${SELECTED_PHP_BIN}. Falling back to system php.${NC}"
+    if command -v php >/dev/null 2>&1; then
+        SELECTED_PHP_BIN="$(command -v php)"
+        SELECTED_PHP_VER="$("$SELECTED_PHP_BIN" -r 'echo PHP_MAJOR_VERSION.PHP_MINOR_VERSION;' 2>/dev/null)"
+    else
+        echo -e "${RED}No usable PHP binary found. Exiting.${NC}"
+        exit 1
     fi
 fi
 
@@ -173,8 +217,9 @@ echo -e ""
 echo -e "${BLUE}Preparing to optimize wp-config.php...${NC}"
 
 # Backup
-cp "$SELECTED_CONFIG" "${SELECTED_CONFIG}.backup.$(date +%F_%T)"
-echo -e "${GREEN}Backup created: ${SELECTED_CONFIG}.backup.$(date +%F_%T)${NC}"
+WP_CONFIG_BACKUP="${SELECTED_CONFIG}.backup.$(date +%F_%H-%M-%S)"
+cp "$SELECTED_CONFIG" "$WP_CONFIG_BACKUP"
+echo -e "${GREEN}Backup created: ${WP_CONFIG_BACKUP}${NC}"
 
 # Helper to add or update define
 # Arguments: $1 = KEY, $2 = VALUE, $3 = FILE
@@ -184,17 +229,15 @@ update_config_define() {
     local file="$3"
     
     # Check if exists
-    if grep -q "$key" "$file"; then
+    if grep -qE "^[[:space:]]*define[[:space:]]*\([[:space:]]*['\"]${key}['\"][[:space:]]*," "$file"; then
         # Replace existing
-        # Using sed with different delimiter to handle complex chars if needed
-        # We assume simple 'define('KEY', ...)' structure
         echo -e " - Updating $key to $val"
-        sed -i "s|define(.*['\"]$key['\"].*);|define( '$key', $val );|g" "$file"
+        sed -i -E "s|^[[:space:]]*define[[:space:]]*\([[:space:]]*['\"]${key}['\"][[:space:]]*,[[:space:]]*.*\)[[:space:]]*;|define( '${key}', ${val} );|g" "$file"
     else
         # Append before "That's all" or at end
         echo -e " - Adding $key = $val"
-        if grep -q "That's all, stop editing" "$file"; then
-             sed -i "/That's all, stop editing/i define( '$key', $val );" "$file"
+        if grep -q "stop editing" "$file"; then
+             sed -i "/stop editing/i define( '$key', $val );" "$file"
         else
              # Append to end if standard line not found (unlikely but safe)
              echo "define( '$key', $val );" >> "$file"
@@ -267,8 +310,9 @@ else
     
     if [[ -f "$PHP_INI" ]]; then
         # 3. Backup
-        cp "$PHP_INI" "${PHP_INI}.backup.$(date +%F_%T)"
-        echo -e "${GREEN}Backup created: ${PHP_INI}.backup.$(date +%F_%T)${NC}"
+        PHP_INI_BACKUP="${PHP_INI}.backup.$(date +%F_%H-%M-%S)"
+        cp "$PHP_INI" "$PHP_INI_BACKUP"
+        echo -e "${GREEN}Backup created: ${PHP_INI_BACKUP}${NC}"
         
         # 4. Update Function
         update_php_ini() {
@@ -277,10 +321,10 @@ else
             local file="$3"
             
             # Check if key exists (active or commented)
-            if grep -qE "^[;]?\s*${key}\s*=" "$file"; then
+            if grep -qE "^[;[:space:]]*${key}[[:space:]]*=" "$file"; then
                 # Replace existing
                 # Pattern: start of line, optional semicolon/space, key, optional space, =, rest
-                sed -i "s|^[;]*\s*${key}\s*=.*|${key} = ${val}|" "$file"
+                sed -i -E "s|^[;[:space:]]*${key}[[:space:]]*=.*|${key} = ${val}|" "$file"
                 echo -e " - Set $key = $val"
             else
                 # Append
@@ -300,9 +344,13 @@ else
         echo -e "${GREEN}php.ini updated.${NC}"
         
         # 6. Restart Notification / Action
-        echo -e "${YELLOW}Restarting LimitSpeed PHP (killall lsphp) to apply changes...${NC}"
-        killall lsphp 2>/dev/null
-        # Also restart lsws gracefully if needed, but killall lsphp is usually enough for PHP proc.
+        echo -e "${YELLOW}Reloading LiteSpeed PHP workers (killall lsphp) to apply changes...${NC}"
+        if pgrep -x lsphp >/dev/null 2>&1; then
+            killall lsphp 2>/dev/null
+            echo -e "${GREEN}LiteSpeed PHP workers reloaded.${NC}"
+        else
+            echo -e "${YELLOW}No active lsphp workers found; new settings apply to new processes.${NC}"
+        fi
         
     else
         echo -e "${RED}php.ini not found at $PHP_INI. Skipping global PHP optimization.${NC}"
@@ -318,21 +366,31 @@ echo -e "${BLUE}Setting up Server-Side Cron...${NC}"
 PHP_BIN="$SELECTED_PHP_BIN"
 echo -e "Detected PHP Binary: ${YELLOW}$PHP_BIN${NC}"
 
-CRON_CMD="cd $SITE_ROOT && $PHP_BIN wp-cron.php >/dev/null 2>&1"
+if ! ensure_crontab_available; then
+    echo -e "${YELLOW}Skipping cron setup because crontab is unavailable.${NC}"
+else
+
+CRON_CMD="cd \"$SITE_ROOT\" && \"$PHP_BIN\" wp-cron.php >/dev/null 2>&1"
 CRON_JOB="*/5 * * * * $CRON_CMD"
 
-# Check if cron already exists for this user
-# We need to act as the user to modify their crontab, or edit /var/spool/cron/crontabs/$SITE_USER
-if crontab -u "$SITE_USER" -l 2>/dev/null | grep -Fq "wp-cron.php"; then
-    echo -e "${YELLOW}Cron job for wp-cron.php already exists for user $SITE_USER.${NC}"
-    # Optional: Update it? For now, we assume if it's there, it's fine, or we can prompt.
-    echo -e "Existing cron: $(crontab -u "$SITE_USER" -l | grep wp-cron.php)"
+TMP_CRON_FILE=$(mktemp)
+TMP_CRON_UPDATED=$(mktemp)
+crontab -u "$SITE_USER" -l 2>/dev/null > "$TMP_CRON_FILE" || true
+
+if grep -Fqx "$CRON_JOB" "$TMP_CRON_FILE"; then
+    echo -e "${GREEN}Cron job is already configured for user ${SITE_USER}.${NC}"
 else
-    # Append new cron
-    # Handle empty crontab case
-    (crontab -u "$SITE_USER" -l 2>/dev/null; echo "$CRON_JOB") | crontab -u "$SITE_USER" -
-    echo -e "${GREEN}Added Cron Job:${NC}"
-    echo -e " ${CRON_JOB}"
+    awk -v root="$SITE_ROOT" '!(index($0, "wp-cron.php") && index($0, root))' "$TMP_CRON_FILE" > "$TMP_CRON_UPDATED"
+    echo "$CRON_JOB" >> "$TMP_CRON_UPDATED"
+    if crontab -u "$SITE_USER" "$TMP_CRON_UPDATED"; then
+        echo -e "${GREEN}Cron job configured:${NC}"
+        echo -e " ${CRON_JOB}"
+    else
+        echo -e "${RED}Failed to update crontab for user ${SITE_USER}.${NC}"
+    fi
+fi
+
+rm -f "$TMP_CRON_FILE" "$TMP_CRON_UPDATED"
 fi
 
 # ----------------------------------------------------------------------
@@ -346,7 +404,11 @@ if command -v wp &> /dev/null; then
     # Run as user
     # 1. Clear Transients
     echo " - Clearing transients..."
-    sudo -u "$SITE_USER" wp transient delete --all --path="$SITE_ROOT" --skip-plugins --skip-themes &>/dev/null
+    if run_wp_cli_as_owner transient delete --all --path="$SITE_ROOT" --skip-plugins --skip-themes >/dev/null 2>&1; then
+        echo -e "${GREEN}   Transients cleared.${NC}"
+    else
+        echo -e "${YELLOW}   Failed to clear transients. Check WP-CLI permissions for ${SITE_USER}.${NC}"
+    fi
     
     # 2. Regenerate Thumbnails (optional, heavy, maybe skip)
     # 3. Optimize Database Tables

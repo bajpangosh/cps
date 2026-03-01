@@ -93,13 +93,21 @@ if [ "$DB_CONNECTED" = true ]; then
         fi
     }
 
+    to_number_or_zero() {
+        local value="$1"
+        if [[ "$value" =~ ^[0-9]+$ ]]; then
+            echo "$value"
+        else
+            echo "0"
+        fi
+    }
+
     # Fetch Variables
-    BUFFER_POOL=$(get_db_var "innodb_buffer_pool_size")
+    BUFFER_POOL=$(to_number_or_zero "$(get_db_var "innodb_buffer_pool_size")")
     BUFFER_POOL_MB=$((BUFFER_POOL / 1024 / 1024))
-    MAX_CONNS=$(get_db_var "max_connections")
-    LOG_FILE_SIZE=$(get_db_var "innodb_log_file_size")
+    MAX_CONNS=$(to_number_or_zero "$(get_db_var "max_connections")")
+    LOG_FILE_SIZE=$(to_number_or_zero "$(get_db_var "innodb_log_file_size")")
     LOG_FILE_SIZE_MB=$((LOG_FILE_SIZE / 1024 / 1024))
-    QUERY_CACHE_TYPE=$(get_db_var "query_cache_type") # ON/OFF or 0/1
     SLOW_QUERY_LOG=$(get_db_var "slow_query_log")
 
     # Analyze
@@ -121,7 +129,9 @@ if [ "$DB_CONNECTED" = true ]; then
 
     # 2. Max Connections
     echo -ne "Max Connections ($MAX_CONNS): "
-    if [ "$MAX_CONNS" -lt 150 ]; then
+    if [ "$MAX_CONNS" -eq 0 ]; then
+         echo -e "${YELLOW}UNKNOWN${NC} (Could not read max_connections from MariaDB variables)"
+    elif [ "$MAX_CONNS" -lt 150 ]; then
          echo -e "${YELLOW}LOW${NC} (Default is often 151, consider raising for traffic spikes)"
     else
          echo -e "${GREEN}OK${NC}"
@@ -154,7 +164,34 @@ echo ""
 echo -e "${BLUE}=== PHP (LSPHP) Audit ===${NC}"
 
 # Define list of PHP versions to check
-PHP_VERSIONS=("74" "80" "81" "82" "83")
+PHP_VERSIONS=("74" "80" "81" "82" "83" "84" "85" "86")
+
+memory_to_mb() {
+    local raw="$1"
+    local upper="${raw^^}"
+
+    if [[ "$upper" == "-1" ]]; then
+        echo "-1"
+        return
+    fi
+
+    if [[ "$upper" =~ ^([0-9]+)(G|GB)$ ]]; then
+        echo $(( ${BASH_REMATCH[1]} * 1024 ))
+        return
+    fi
+
+    if [[ "$upper" =~ ^([0-9]+)(M|MB)?$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+    fi
+
+    if [[ "$upper" =~ ^([0-9]+)(K|KB)$ ]]; then
+        echo $(( ${BASH_REMATCH[1]} / 1024 ))
+        return
+    fi
+
+    echo "0"
+}
 
 for ver in "${PHP_VERSIONS[@]}"; do
     INI_FILE="/usr/local/lsws/lsphp${ver}/etc/php.ini"
@@ -163,18 +200,16 @@ for ver in "${PHP_VERSIONS[@]}"; do
         echo -e "${CYAN}Checking LSPHP ${ver}...${NC}"
         
         # Read Values using grep/awk
-        MEM_LIMIT=$(grep -E "^memory_limit" "$INI_FILE" |  awk -F "=" '{print $2}' | tr -d ' "')
-        EXEC_TIME=$(grep -E "^max_execution_time" "$INI_FILE" |  awk -F "=" '{print $2}' | tr -d ' "')
-        UPLOAD_MAX=$(grep -E "^upload_max_filesize" "$INI_FILE" |  awk -F "=" '{print $2}' | tr -d ' "')
-        OPCACHE=$(grep -E "^opcache.enable" "$INI_FILE" | awk -F "=" '{print $2}' | tr -d ' "')
-
-        # Memory Limit Analysis
-        # Basic parsing of M/G
-        MEM_VAL=${MEM_LIMIT//M/}
-        MEM_VAL=${MEM_VAL//G/000} # Rough conversion G -> M
+        MEM_LIMIT=$(awk -F "=" '/^[[:space:]]*memory_limit[[:space:]]*=/{gsub(/[ "]/, "", $2); print $2; exit}' "$INI_FILE")
+        EXEC_TIME=$(awk -F "=" '/^[[:space:]]*max_execution_time[[:space:]]*=/{gsub(/[ "]/, "", $2); print $2; exit}' "$INI_FILE")
+        UPLOAD_MAX=$(awk -F "=" '/^[[:space:]]*upload_max_filesize[[:space:]]*=/{gsub(/[ "]/, "", $2); print $2; exit}' "$INI_FILE")
+        OPCACHE=$(awk -F "=" '/^[[:space:]]*opcache\.enable[[:space:]]*=/{gsub(/[ "]/, "", $2); print $2; exit}' "$INI_FILE")
+        MEM_VAL=$(memory_to_mb "$MEM_LIMIT")
         
         echo -ne "  Memory Limit ($MEM_LIMIT): "
-        if [[ "$MEM_VAL" -lt 128 ]]; then
+        if [[ "$MEM_VAL" -eq -1 ]]; then
+            echo -e "${GREEN}UNLIMITED${NC}"
+        elif [[ "$MEM_VAL" -lt 128 ]]; then
             echo -e "${RED}LOW${NC} -> WP/Woo needs at least 256M, preferably 512M."
         elif [[ "$MEM_VAL" -lt 512 ]]; then
              echo -e "${YELLOW}MODERATE${NC} -> 512M+ recommended for WooCommerce."
@@ -187,7 +222,7 @@ for ver in "${PHP_VERSIONS[@]}"; do
         
         # OpCode Cache
         echo -ne "  Opcache Enabled: "
-        if [[ "$OPCACHE" == "1" || "$OPCACHE" == "On" ]]; then
+        if [[ "${OPCACHE,,}" == "1" || "${OPCACHE,,}" == "on" ]]; then
              echo -e "${GREEN}YES${NC}"
         else
              echo -e "${RED}NO${NC} -> Enable opcache for significantly better performance."

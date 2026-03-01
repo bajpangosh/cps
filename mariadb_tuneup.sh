@@ -42,6 +42,11 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+if ! command -v systemctl >/dev/null 2>&1; then
+    echo -e "${RED}systemctl command not found. This script currently supports systemd-based servers only.${NC}"
+    exit 1
+fi
+
 # ----------------------------------------------------------------------
 # FETCH CREDENTIALS
 # ----------------------------------------------------------------------
@@ -223,7 +228,7 @@ if [[ "$1" != "-y" ]]; then
         exit 1
     fi
     
-    if [[ "$PROCEED" != "y" ]]; then
+    if [[ ! "$PROCEED" =~ ^[Yy]$ ]]; then
         echo "Aborted."
         exit 0
     fi
@@ -233,16 +238,36 @@ fi
 # BACKUP & WRITE
 # ----------------------------------------------------------------------
 # Backup the MAIN config just in case, even if we assume we are writing to a new file
+BACKUP_NAME=""
+TARGET_BACKUP=""
+
 if [[ -f "$MAIN_CONFIG" ]]; then
-    BACKUP_NAME="${MAIN_CONFIG}.backup.$(date +%F_%T)"
+    BACKUP_NAME="${MAIN_CONFIG}.backup.$(date +%F_%H-%M-%S)"
     cp "$MAIN_CONFIG" "$BACKUP_NAME"
     echo -e "${GREEN}Backup of main config created: ${BACKUP_NAME}${NC}"
 fi
 
 # If we are overwriting an existing override file, backup that too
 if [[ "$WRITE_MODE" == "OVERRIDE" && -f "$TARGET_CONFIG" ]]; then
-      cp "$TARGET_CONFIG" "${TARGET_CONFIG}.backup.$(date +%F_%T)"
+      TARGET_BACKUP="${TARGET_CONFIG}.backup.$(date +%F_%H-%M-%S)"
+      cp "$TARGET_CONFIG" "$TARGET_BACKUP"
+      echo -e "${GREEN}Backup of existing override created: ${TARGET_BACKUP}${NC}"
 fi
+
+restore_previous_config() {
+    if [[ "$WRITE_MODE" == "APPEND" ]]; then
+        if [[ -n "$BACKUP_NAME" && -f "$BACKUP_NAME" ]]; then
+            cp "$BACKUP_NAME" "$MAIN_CONFIG"
+        fi
+        return
+    fi
+
+    if [[ -n "$TARGET_BACKUP" && -f "$TARGET_BACKUP" ]]; then
+        cp "$TARGET_BACKUP" "$TARGET_CONFIG"
+    else
+        rm -f "$TARGET_CONFIG"
+    fi
+}
 
 CONFIG_CONTENT="# -----------------------------------------
 # KLOUDBOY WOOCOMMERCE TUNEUP
@@ -293,9 +318,22 @@ echo -e "${GREEN}Configuration written to ${TARGET_CONFIG}${NC}"
 # ----------------------------------------------------------------------
 
 # Detect Service Name (mariadb vs mysql)
-SERVICE_NAME="mariadb"
-if systemctl list-units --full -all | grep -Fq "mysql.service"; then
+SERVICE_NAME=""
+if systemctl is-active --quiet mariadb; then
+    SERVICE_NAME="mariadb"
+elif systemctl is-active --quiet mysql; then
     SERVICE_NAME="mysql"
+elif systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null | awk '{print $1}' | grep -qx "mariadb.service"; then
+    SERVICE_NAME="mariadb"
+elif systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null | awk '{print $1}' | grep -qx "mysql.service"; then
+    SERVICE_NAME="mysql"
+fi
+
+if [[ -z "$SERVICE_NAME" ]]; then
+    echo -e "${RED}Could not detect MariaDB/MySQL service name.${NC}"
+    echo -e "${RED}Reverting configuration changes to avoid risky state.${NC}"
+    restore_previous_config
+    exit 1
 fi
 
 echo -e "${BLUE}Detected Database Service: ${SERVICE_NAME}${NC}"
@@ -321,11 +359,7 @@ if [[ $SYNTAX_CHECK -ne 0 ]]; then
     
     # Revert immediately
     echo -e "${RED}Reverting changes...${NC}"
-    if [[ "$WRITE_MODE" == "APPEND" ]]; then
-         cp "$BACKUP_NAME" "$MAIN_CONFIG"
-    else
-         rm "$TARGET_CONFIG"
-    fi
+    restore_previous_config
     echo -e "${YELLOW}Reverted. No service restart was attempted.${NC}"
     exit 1
 fi
@@ -342,12 +376,7 @@ else
     systemctl status "$SERVICE_NAME" --no-pager
     
     echo -e "${RED}Reverting changes...${NC}"
-    if [[ "$WRITE_MODE" == "APPEND" ]]; then
-        # This is hard to revert automatically without risky logic, so we restore backup
-        cp "$BACKUP_NAME" "$MAIN_CONFIG"
-    else
-        rm "$TARGET_CONFIG"
-    fi
+    restore_previous_config
     systemctl restart "$SERVICE_NAME"
     echo -e "${YELLOW}Reverted. Please check logs.${NC}"
 fi
